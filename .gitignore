@@ -1,0 +1,45 @@
+# Build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# LaTeX artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.tex.bak
+
+# Workspace outputs
+workspaces/
+results/
+plots/
+*.sqlite
+*.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Simulation outputs
+simulation_statistics.json
+*.pyc
+
+# Manuscript sources are not part of the public release
+paper/
+
+# SystemC build outputs
+src/systemc/pipeline_sim
+*.o
+*.d

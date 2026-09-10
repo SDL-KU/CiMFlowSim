@@ -1,0 +1,555 @@
+#!/usr/bin/env python3
+"""
+CiMFlowSim - Unified CLI for CNN accelerator simulation
+
+Usage:
+    # Main workflow: Design Space Exploration (recommended)
+    ./efsim benchmark --all
+    ./efsim benchmark --hardware isscc_2021_22nm_reram --networks vgg11_4layers
+
+    # Resume interrupted simulation
+    ./efsim simulate my_workspace --resume
+
+    # Regenerate plots only
+    ./efsim plot my_workspace
+    ./efsim plot my_workspace --progressive  # Include progressive layer plots
+
+    # Generate Gantt chart for specific strategy
+    ./efsim gantt my_workspace --strategy L0_S0
+
+    # Workspace management
+    ./efsim list              # List all workspaces
+    ./efsim info WORKSPACE    # Show workspace info
+    ./efsim clean WORKSPACE   # Delete workspace
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="CiMFlowSim - CNN Accelerator Simulation Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Commands:
+  benchmark    Run full DSE (generate + simulate + plot)
+  simulate     Run/resume SystemC simulations
+  plot         Generate plots from simulation results
+  gantt        Generate Gantt chart PDF for specific strategy
+  sweep        Parameter sweep (auto-runs analysis at the end)
+  sweep-analyze  Re-analyze sweep results (plots only)
+  plot-sweep   Regenerate plots for all sweep configurations (with resume)
+  score        Calculate strategy usefulness scores
+  pattern      Cross-layer pattern analysis (find universal strategies)
+
+  Utilities:
+    list       List all workspaces
+    info       Show workspace information
+    clean      Delete workspace
+
+Examples:
+  # Main workflow
+  ./efsim benchmark --all
+  ./efsim benchmark --hardware isscc_2021_22nm_reram --networks vgg11_4layers
+  ./efsim benchmark --all --generate-gantt --generate-memory-layout --tiling-diagrams
+  ./efsim benchmark --all --max-cpus 90 --dry-run
+
+  # Simulation
+  ./efsim simulate my_workspace --resume
+  ./efsim simulate my_workspace --max-cpus 90 --generate-gantt --retry-failed
+
+  # Plotting
+  ./efsim plot my_workspace
+  ./efsim plot my_workspace --progressive --layers 0,1,2
+  ./efsim plot my_workspace --tiling-diagrams --num-samples 1000000
+
+  # Gantt chart
+  ./efsim gantt my_workspace --strategy L0_S0 L1_S5
+  ./efsim gantt my_workspace --all
+
+  # Parameter sweep
+  ./efsim sweep --config configs/sweep/cim_compute_time.json
+  ./efsim sweep --param hardware.cim.compute_time_ns --values 20,40,60 --network vgg11_4layers
+  ./efsim sweep --config configs/sweep/cim_time.json --resume --dry-run
+  ./efsim sweep-analyze my_sweep --all
+  ./efsim sweep-analyze my_sweep --analysis pareto_comparison parameter_sensitivity
+
+  # Regenerate sweep plots (with resume support)
+  ./efsim plot-sweep my_sweep_workspace
+  ./efsim plot-sweep my_sweep_workspace --resume
+  ./efsim plot-sweep my_sweep_workspace --network vgg11_4layers --resume
+
+  # Strategy scoring
+  ./efsim score my_workspace --top 20 --save
+  ./efsim score my_workspace --layer 0 --objectives latency_ns:min area_mm2:min
+
+  # Cross-layer pattern analysis
+  ./efsim pattern my_workspace --top 30 --save --detailed
+  ./efsim pattern my_workspace --plot --network-pareto
+
+  # Utilities
+  ./efsim list
+  ./efsim info my_workspace
+  ./efsim clean my_workspace
+        """,
+    )
+
+    parser.add_argument("command", help="Command to execute")
+    parser.add_argument("args", nargs=argparse.REMAINDER, help="Command arguments")
+
+    args = parser.parse_args()
+
+    # Map commands to tool scripts
+    commands = {
+        "benchmark": "tools/dse_benchmark.py",
+        "simulate": "tools/simulate.py",
+        "plot": "tools/plot.py",
+        "gantt": "gantt_command",
+        "sweep": "tools/sweep.py",
+        "sweep-analyze": "tools/sweep_analysis.py",
+        "plot-sweep": "plot_sweep_command",
+        "score": "tools/score.py",
+        "pattern": "tools/pattern.py",
+        # Utilities
+        "list": "list_workspaces",
+        "info": "workspace_info",
+        "clean": "clean_workspace",
+    }
+
+    if args.command not in commands:
+        print(f"Unknown command: {args.command}")
+        print(f"Available commands: {', '.join(commands.keys())}")
+        parser.print_help()
+        sys.exit(1)
+
+    # Handle special commands
+    if args.command == "list":
+        list_workspaces()
+        return
+
+    if args.command == "gantt":
+        gantt_command(args.args)
+        return
+
+    if args.command == "plot-sweep":
+        plot_sweep_command(args.args)
+        return
+
+    if args.command == "info":
+        if not args.args or args.args[0] in ("-h", "--help"):
+            print("Usage: ./efsim info WORKSPACE")
+            print("\nShow detailed information about a workspace.")
+            print("\nArguments:")
+            print("  WORKSPACE    Name of the workspace to inspect")
+            sys.exit(0 if args.args else 1)
+        workspace_info(args.args[0])
+        return
+
+    if args.command == "clean":
+        if not args.args or args.args[0] in ("-h", "--help"):
+            print("Usage: ./efsim clean WORKSPACE")
+            print("\nDelete a workspace and all its contents.")
+            print("\nArguments:")
+            print("  WORKSPACE    Name of the workspace to delete")
+            sys.exit(0 if args.args else 1)
+        clean_workspace(args.args[0])
+        return
+
+    # Execute tool script
+    script = Path(__file__).parent / commands[args.command]
+    if not script.exists():
+        print(f"Error: Tool script not found: {script}")
+        sys.exit(1)
+
+    # Run the tool with remaining arguments
+    import os
+    import subprocess
+
+    # Set PYTHONPATH to project root automatically
+    project_root = str(Path(__file__).parent.absolute())
+    env = os.environ.copy()
+    env["PYTHONPATH"] = project_root
+
+    cmd = [sys.executable, str(script)] + args.args
+    result = subprocess.run(cmd, env=env)
+    sys.exit(result.returncode)
+
+
+def list_workspaces():
+    """List all workspaces"""
+    import json
+
+    workspaces_dir = Path(__file__).parent / "workspaces"
+    if not workspaces_dir.exists():
+        print("No workspaces found.")
+        return
+
+    workspaces = []
+    for ws_dir in sorted(workspaces_dir.iterdir()):
+        if not ws_dir.is_dir():
+            continue
+
+        ws_info_file = ws_dir / "workspace.json"
+        if ws_info_file.exists():
+            with open(ws_info_file) as f:
+                info = json.load(f)
+            workspaces.append(
+                {
+                    "name": info.get("name", ws_dir.name),
+                    "network": info.get("network_name", "Unknown"),
+                    "layers": info.get("num_layers", "?"),
+                    "created": info.get("created_at", "Unknown")[:10],
+                }
+            )
+        else:
+            # Legacy workspace without metadata
+            workspaces.append(
+                {
+                    "name": ws_dir.name,
+                    "network": "Unknown",
+                    "layers": "?",
+                    "created": "Unknown",
+                }
+            )
+
+    if not workspaces:
+        print("No workspaces found.")
+        return
+
+    print("\nAvailable Workspaces:")
+    print("-" * 80)
+    print(f"{'Name':<30} {'Network':<25} {'Layers':<8} {'Created':<12}")
+    print("-" * 80)
+    for ws in workspaces:
+        print(f"{ws['name']:<30} {ws['network']:<25} {ws['layers']:<8} {ws['created']:<12}")
+    print()
+
+
+def workspace_info(workspace_name):
+    """Show detailed workspace information"""
+    import json
+
+    ws_dir = Path(__file__).parent / "workspaces" / workspace_name
+    if not ws_dir.exists():
+        print(f"Error: Workspace not found: {workspace_name}")
+        sys.exit(1)
+
+    ws_info_file = ws_dir / "workspace.json"
+    if not ws_info_file.exists():
+        print(f"Error: Workspace metadata not found: {workspace_name}")
+        print("   This might be a legacy workspace.")
+        sys.exit(1)
+
+    with open(ws_info_file) as f:
+        info = json.load(f)
+
+    print(f"\nWorkspace: {info['name']}")
+    print("=" * 80)
+    print(f"Network:      {info.get('network_name', 'Unknown')}")
+    print(f"Layers:       {info.get('num_layers', '?')}")
+    print(f"Network cfg:  {info.get('network', 'Unknown')}")
+    print(f"Hardware cfg: {info.get('hardware', 'Unknown')}")
+    print(f"Created:      {info.get('created_at', 'Unknown')}")
+    print()
+
+    # Check what's been generated
+    layers_dir = ws_dir / "layers"
+    strategies_dir = ws_dir / "strategies"
+    simulations_dir = ws_dir / "simulations"
+    db_file = ws_dir / "strategies.db"
+
+    print("Status:")
+    if layers_dir.exists():
+        num_layers = len(list(layers_dir.glob("L*.json")))
+        print(f"  Layer configs: {num_layers}")
+    else:
+        print(f"  Layer configs: not generated")
+
+    if strategies_dir.exists():
+        num_strategies = len(list(strategies_dir.glob("L*_S*.json")))
+        print(f"  Strategies: {num_strategies}")
+    else:
+        print(f"  Strategies: not generated")
+
+    if simulations_dir.exists():
+        num_sims = len(list(simulations_dir.glob("L*_S*.json")))
+        print(f"  Simulations: {num_sims}")
+    else:
+        print(f"  Simulations: not run")
+
+    if db_file.exists():
+        print(f"  Database: {db_file.name}")
+    else:
+        print(f"  Database: not created")
+
+    print()
+
+
+def gantt_command(cmd_args):
+    """Generate Gantt chart PDF for specific strategy"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="efsim gantt",
+        description="Generate Gantt chart PDF for a specific strategy",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Generate Gantt chart for specific strategy
+  ./efsim gantt my_workspace --strategy L0_S0
+
+  # Generate for multiple strategies
+  ./efsim gantt my_workspace --strategy L0_S0 L1_S5 L2_S10
+
+  # Generate for all strategies (warning: slow for large networks)
+  ./efsim gantt my_workspace --all
+        """,
+    )
+    parser.add_argument("workspace", help="Workspace name or path")
+    parser.add_argument(
+        "--strategy", "-s",
+        nargs="+",
+        help="Strategy ID(s) to generate (e.g., L0_S0 L1_S5)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Generate for all strategies (warning: slow)",
+    )
+    parser.add_argument(
+        "--output", "-o",
+        help="Output directory (default: workspace/plots/gantt)",
+    )
+
+    args = parser.parse_args(cmd_args)
+
+    # Validate workspace
+    ws_dir = Path(__file__).parent / "workspaces" / args.workspace
+    if not ws_dir.exists():
+        # Try as direct path
+        ws_dir = Path(args.workspace)
+        if not ws_dir.exists():
+            print(f"Workspace not found: {args.workspace}")
+            sys.exit(1)
+
+    simulations_dir = ws_dir / "simulations"
+    if not simulations_dir.exists():
+        print(f"No simulations found in workspace: {args.workspace}")
+        sys.exit(1)
+
+    # Determine which strategies to process
+    if args.all:
+        strategies = [d.name for d in simulations_dir.iterdir() if d.is_dir()]
+    elif args.strategy:
+        strategies = args.strategy
+    else:
+        print("Please specify --strategy or --all")
+        parser.print_help()
+        sys.exit(1)
+
+    # Output directory
+    output_dir = Path(args.output) if args.output else ws_dir / "plots" / "gantt"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set PYTHONPATH for imports
+    import os
+    project_root = str(Path(__file__).parent.absolute())
+    sys.path.insert(0, os.path.join(project_root, "src", "python"))
+
+    # Generate PDFs using numpy-optimized functions (30-70x faster for large files)
+    from visualization.visualize_pipeline import (
+        parse_gantt_data_numpy, create_gantt_chart_numpy,
+        parse_gantt_data, create_gantt_chart_simple
+    )
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    success_count = 0
+    for strategy_id in strategies:
+        # Try binary format first, then fall back to CSV/txt
+        gantt_file = simulations_dir / strategy_id / "gantt_data.bin"
+        use_numpy = gantt_file.exists()  # Use fast numpy path for binary files
+
+        if not gantt_file.exists():
+            gantt_file = simulations_dir / strategy_id / "gantt_data.txt"
+        if not gantt_file.exists():
+            gantt_file = simulations_dir / strategy_id / "gantt_data.csv"
+        if not gantt_file.exists():
+            print(f" No gantt_data for {strategy_id}, skipping")
+            continue
+
+        print(f"Generating Gantt chart for {strategy_id}...")
+        try:
+            if use_numpy:
+                # Fast path: binary → numpy → broken_barh (30-70x faster)
+                records = parse_gantt_data_numpy(str(gantt_file))
+                if len(records) == 0:
+                    print(f" No operations in {strategy_id}, skipping")
+                    continue
+                fig = create_gantt_chart_numpy(records)
+            else:
+                # Legacy path: CSV → dict → Rectangle patches
+                operations = parse_gantt_data(str(gantt_file))
+                if not operations:
+                    print(f" No operations in {strategy_id}, skipping")
+                    continue
+                fig = create_gantt_chart_simple(operations)
+
+            output_file = output_dir / f"{strategy_id}_gantt.pdf"
+            fig.savefig(output_file, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+
+            print(f"   Saved: {output_file}")
+            success_count += 1
+        except Exception as e:
+            print(f"   Failed: {e}")
+
+    print(f"\nGenerated {success_count}/{len(strategies)} Gantt charts")
+    print(f"   Output: {output_dir}")
+
+
+def plot_sweep_command(cmd_args):
+    """Regenerate plots for all configurations in a sweep workspace"""
+    import argparse
+    import json
+    import subprocess
+    from datetime import datetime
+
+    parser = argparse.ArgumentParser(
+        prog="efsim plot-sweep",
+        description="Regenerate plots for all configurations in a sweep workspace",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Regenerate all plots in sweep workspace
+  ./efsim plot-sweep workspaces/sweep_ibuf_bandwidth_sweep_2026-01-02_104903
+
+  # Resume from previous progress
+  ./efsim plot-sweep workspaces/sweep_ibuf_bandwidth_sweep_2026-01-02_104903 --resume
+
+  # Filter by network
+  ./efsim plot-sweep my_sweep_workspace --network vgg11_4layers --resume
+        """,
+    )
+    parser.add_argument("workspace", help="Sweep workspace path")
+    parser.add_argument(
+        "--resume", "-r",
+        action="store_true",
+        help="Resume from previous progress",
+    )
+    parser.add_argument(
+        "--network", "-n",
+        type=str,
+        default=None,
+        help="Filter configurations by network name (default: all)",
+    )
+
+    args = parser.parse_args(cmd_args)
+
+    # Validate workspace
+    workspace = Path(args.workspace)
+    if not workspace.exists():
+        # Try in workspaces directory
+        workspace = Path(__file__).parent / "workspaces" / args.workspace
+        if not workspace.exists():
+            print(f"Sweep workspace not found: {args.workspace}")
+            sys.exit(1)
+
+    # Determine network pattern
+    if args.network:
+        pattern = f"num_banks_*_{args.network}/num_banks_*_{args.network}"
+    else:
+        # Find all configuration directories (nested structure)
+        pattern = "num_banks_*/num_banks_*"
+
+    dirs = sorted(workspace.glob(pattern))
+
+    if not dirs:
+        print(f"No configurations found matching: {pattern}")
+        sys.exit(1)
+
+    print(f"Found {len(dirs)} configurations")
+
+    # Progress file
+    progress_file = workspace / "plot_regen_progress.json"
+
+    # Load existing progress (use set for O(1) lookup)
+    completed_set = set()
+    if args.resume and progress_file.exists():
+        with open(progress_file) as f:
+            data = json.load(f)
+            completed_set = set(data.get("completed", []))
+        remaining = len(dirs) - len(completed_set)
+        print(f"Resuming: {len(completed_set)}/{len(dirs)} completed, {remaining} remaining")
+
+    # Process each configuration
+    success_count = len(completed_set)
+    project_root = Path(__file__).parent.absolute()
+
+    for i, config_dir in enumerate(dirs):
+        name = config_dir.name
+
+        # Skip if already completed (O(1) lookup with set)
+        if name in completed_set:
+            continue
+
+        percent = (i + 1) / len(dirs) * 100
+        print(f"[{i+1}/{len(dirs)} {percent:.0f}%] Processing: {name}")
+
+        # Run plot generation (use absolute path)
+        result = subprocess.run(
+            [sys.executable, "tools/plot.py", str(config_dir.absolute())],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root)
+        )
+
+        if result.returncode == 0:
+            completed_set.add(name)
+            success_count += 1
+            print(f"   Done")
+        else:
+            error_msg = result.stderr[:200] if result.stderr else "Unknown error"
+            print(f"   Failed: {error_msg}")
+
+        # Save progress after each completion
+        progress_data = {
+            "completed": sorted(completed_set),  # Convert to sorted list for JSON
+            "total": len(dirs),
+            "percent_complete": len(completed_set) / len(dirs) * 100,
+            "last_updated": datetime.now().isoformat(),
+        }
+        with open(progress_file, "w") as f:
+            json.dump(progress_data, f, indent=2)
+
+    print()
+    print(f"Completed: {success_count}/{len(dirs)}")
+    print(f"   Progress saved to: {progress_file}")
+
+
+def clean_workspace(workspace_name):
+    """Delete a workspace"""
+    import shutil
+
+    ws_dir = Path(__file__).parent / "workspaces" / workspace_name
+    if not ws_dir.exists():
+        print(f"Error: Workspace not found: {workspace_name}")
+        sys.exit(1)
+
+    # Confirm deletion
+    print(f" This will delete workspace: {workspace_name}")
+    print(f"   Location: {ws_dir}")
+    response = input("Are you sure? [y/N]: ").strip().lower()
+    if response != "y":
+        print("Cancelled.")
+        return
+
+    shutil.rmtree(ws_dir)
+    print(f"Deleted workspace: {workspace_name}")
+
+
+if __name__ == "__main__":
+    main()

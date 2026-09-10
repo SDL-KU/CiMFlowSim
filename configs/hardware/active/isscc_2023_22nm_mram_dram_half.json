@@ -1,0 +1,88 @@
+{
+  "description": "ISSCC 2023 22nm STT-MRAM NMC - 20ns T_CD-MAC & 46.4-160.1 TOPS/W (8b-8b) [DRAM Half BW]",
+  "hardware": {
+    "cim": {
+      "compute_time_ns": 20.0,
+      "macro_config": {
+        "input_size": 576,
+        "output_size": 72,
+        "macro_area_um2": 18000000.0,
+        "description": "22nm 8Mb STT-MRAM, NACU=576, 64 sub-banks, 18mm² die"
+      }
+    },
+    "ibuf": {
+      "timing": {
+        "clk_frequency_mhz": 200.0,
+        "base_latency_cycles": 1
+      },
+      "architecture": {
+        "num_banks": 1,
+        "bits_per_line": 64,
+        "description": "Standardized buffer config"
+      },
+      "ports": {
+        "num_read_ports": 0,
+        "num_write_ports": 0,
+        "num_rw_ports": 1
+      }
+    },
+    "obuf": {
+      "timing": {
+        "clk_frequency_mhz": 200.0,
+        "base_latency_cycles": 1
+      },
+      "architecture": {
+        "num_banks": 1,
+        "bits_per_line": 64,
+        "description": "Standardized buffer config"
+      },
+      "ports": {
+        "num_read_ports": 0,
+        "num_write_ports": 0,
+        "num_rw_ports": 1
+      }
+    },
+    "external": {
+      "timing": {
+        "clk_frequency_mhz": 800.0,
+        "base_latency_cycles": 192,
+        "description": "LPDDR4-1600 (240ns latency, 3.2 GB/s) - Half bandwidth"
+      },
+      "architecture": {
+        "num_banks": 1,
+        "bits_per_line": 32,
+        "description": "LPDDR4-1600 x16 (3.2 GB/s)"
+      },
+      "ports": {
+        "num_read_ports": 0,
+        "num_write_ports": 0,
+        "num_rw_ports": 1
+      }
+    },
+    "technology": {
+      "node": "22nm",
+      "sram_bit_area_um2": 0.5
+    }
+  },
+  "energy": {
+    "computation": {
+      "mac_energy": 0.01,
+      "pooling_energy": 0,
+      "description": "pJ per MAC. ~100 TOPS/W mid-range [ISSCC'23 STT-MRAM]."
+    },
+    "memory": {
+      "sram_read_energy_per_bit": 0.0025,
+      "sram_write_energy_per_bit": 0.0025,
+      "dram_read_energy_per_bit": 10.0,
+      "dram_write_energy_per_bit": 10.0,
+      "description": "pJ/bit. SRAM: 20fJ/b from paper. DRAM: 10pJ/bit."
+    },
+    "communication": {
+      "on_chip_wire_energy": 0.003
+    },
+    "static": {
+      "static_power_mw": 0.1,
+      "description": "Estimated static power for 22nm MRAM"
+    }
+  }
+}

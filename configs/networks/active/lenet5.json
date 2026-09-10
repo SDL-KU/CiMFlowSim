@@ -1,0 +1,70 @@
+{
+  "network_name": "LeNet-5",
+  "description": "LeNet-5 CNN for MNIST digit recognition (batch=4)",
+  "batch_size": 32,
+  "layers": [
+    {
+      "name": "conv1",
+      "type": "conv2d",
+      "params": {
+        "H": 32,
+        "W": 32,
+        "C": 1,
+        "R": 5,
+        "S": 5,
+        "M": 6,
+        "stride": 1,
+        "input_bitwidth": 4,
+        "output_bitwidth": 4,
+        "P": 28,
+        "Q": 28,
+        "P_pooled": 14,
+        "Q_pooled": 14,
+        "pool_height": 2,
+        "pool_width": 2
+      }
+    },
+    {
+      "name": "conv2",
+      "type": "conv2d",
+      "params": {
+        "H": 14,
+        "W": 14,
+        "C": 6,
+        "R": 5,
+        "S": 5,
+        "M": 16,
+        "stride": 1,
+        "input_bitwidth": 4,
+        "output_bitwidth": 4,
+        "P": 10,
+        "Q": 10,
+        "P_pooled": 5,
+        "Q_pooled": 5,
+        "pool_height": 2,
+        "pool_width": 2
+      }
+    },
+    {
+      "name": "conv3",
+      "type": "conv2d",
+      "params": {
+        "H": 5,
+        "W": 5,
+        "C": 16,
+        "R": 5,
+        "S": 5,
+        "M": 120,
+        "stride": 1,
+        "input_bitwidth": 4,
+        "output_bitwidth": 4,
+        "P": 1,
+        "Q": 1,
+        "P_pooled": 1,
+        "Q_pooled": 1,
+        "pool_height": 1,
+        "pool_width": 1
+      }
+    }
+  ]
+}
